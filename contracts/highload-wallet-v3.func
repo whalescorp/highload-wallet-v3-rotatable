@@ -8,6 +8,9 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
 () set_actions(cell actions) impure asm "c5 POP";
 
 const int op::internal_transfer = 0xae42e5a4;
+const int op::assign_new_owner = "op::assign_new_owner"c;
+const int op::accept_ownership = "op::accept_ownership"c;
+const int op::update_public_key = "op::update_public_key"c;
 
 const int error::invalid_signature = 33;
 const int error::invalid_subwallet_id = 34;
@@ -28,9 +31,6 @@ const int BIT_NUMBER_SIZE = 10; ;; 2^10 = 1024
 
 () recv_internal(cell in_msg_full, slice in_msg_body) impure {
     (int body_bits, int body_refs) = in_msg_body.slice_bits_refs();
-    ifnot ((body_refs == 1) & (body_bits == MSG_OP_SIZE + MSG_QUERY_ID_SIZE)) {
-        return (); ;; just accept TONs
-    }
 
     slice in_msg_full_slice = in_msg_full.begin_parse();
     int msg_flags = in_msg_full_slice~load_msg_flags();
@@ -40,9 +40,87 @@ const int BIT_NUMBER_SIZE = 10; ;; 2^10 = 1024
 
     slice sender_address = in_msg_full_slice~load_msg_addr();
 
+    slice data_slice = get_data().begin_parse();
+    int public_key = data_slice~load_uint(PUBLIC_KEY_SIZE);
+    int subwallet_id = data_slice~load_uint(SUBWALLET_ID_SIZE);
+    cell old_queries = data_slice~load_dict();
+    cell queries = data_slice~load_dict();
+    int last_clean_time = data_slice~load_uint(TIMESTAMP_SIZE);
+    int timeout = data_slice~load_uint(TIMEOUT_SIZE);
+    slice owner_addr = data_slice~load_msg_addr();
+    slice next_owner_addr = data_slice~load_msg_addr();
+    data_slice.end_parse();
+
+    if (sender_address.equal_slices_bits(owner_addr)) {
+        int op = in_msg_body~load_op();
+
+        if (op == op::assign_new_owner) {
+            in_msg_body~skip_query_id();
+            slice pending_owner = in_msg_body~load_msg_addr();
+            in_msg_body.end_parse();
+
+            set_data(begin_cell()
+            .store_uint(public_key, PUBLIC_KEY_SIZE)
+            .store_uint(subwallet_id, SUBWALLET_ID_SIZE)
+            .store_dict(old_queries)
+            .store_dict(queries)
+            .store_uint(last_clean_time, TIMESTAMP_SIZE)
+            .store_uint(timeout, TIMEOUT_SIZE)
+            .store_slice(owner_addr)
+            .store_slice(pending_owner)
+            .end_cell());
+
+            return ();
+        }
+
+        if (op == op::update_public_key) {
+            in_msg_body~skip_query_id();
+            int new_public_key = in_msg_body~load_uint(PUBLIC_KEY_SIZE);
+            in_msg_body.end_parse();
+
+            set_data(begin_cell()
+                .store_uint(new_public_key, PUBLIC_KEY_SIZE)
+                .store_uint(subwallet_id, SUBWALLET_ID_SIZE)
+                .store_dict(old_queries)
+                .store_dict(queries)
+                .store_uint(last_clean_time, TIMESTAMP_SIZE)
+                .store_uint(timeout, TIMEOUT_SIZE)
+                .store_slice(owner_addr)
+                .store_slice(next_owner_addr)
+                .end_cell());
+
+            return ();
+        }
+
+        return ();
+    }
+
+    if (sender_address.equal_slices_bits(next_owner_addr) & (slice_bits(next_owner_addr) == 267)) {
+        int op = in_msg_body~load_op();
+        if (op == op::accept_ownership) {
+            set_data(begin_cell()
+            .store_uint(public_key, PUBLIC_KEY_SIZE)
+            .store_uint(subwallet_id, SUBWALLET_ID_SIZE)
+            .store_dict(old_queries)
+            .store_dict(queries)
+            .store_uint(last_clean_time, TIMESTAMP_SIZE)
+            .store_uint(timeout, TIMEOUT_SIZE)
+            .store_slice(next_owner_addr)
+            .store_uint(0, 2)
+            .end_cell());
+
+            return ();
+        }
+        return ();
+    }
+
     ;; not from myself
     if (~ sender_address.equal_slices_bits(my_address())) {
         return ();  ;; just accept TONs
+    }
+
+    ifnot ((body_refs == 1) & (body_bits == MSG_OP_SIZE + MSG_QUERY_ID_SIZE)) {
+        return (); ;; just accept TONs
     }
 
     int op = in_msg_body~load_op();
@@ -70,6 +148,8 @@ const int BIT_NUMBER_SIZE = 10; ;; 2^10 = 1024
     cell queries = data_slice~load_dict();
     int last_clean_time = data_slice~load_uint(TIMESTAMP_SIZE);
     int timeout = data_slice~load_uint(TIMEOUT_SIZE);
+    slice owner_addr = data_slice~load_msg_addr();
+    slice next_owner_addr = data_slice~load_msg_addr();
     data_slice.end_parse();
 
     if (last_clean_time < (now() - timeout)) {
@@ -127,6 +207,8 @@ const int BIT_NUMBER_SIZE = 10; ;; 2^10 = 1024
         .store_dict(queries)
         .store_uint(last_clean_time, TIMESTAMP_SIZE)
         .store_uint(timeout, TIMEOUT_SIZE)
+        .store_slice(owner_addr)
+        .store_slice(next_owner_addr)
         .end_cell());
 
 
@@ -201,6 +283,15 @@ int get_timeout() method_id {
     return data_slice.preload_uint(TIMEOUT_SIZE);
 }
 
+(slice, slice) get_owner() method_id {
+    slice data_slice = get_data().begin_parse();
+    data_slice~skip_bits(PUBLIC_KEY_SIZE + SUBWALLET_ID_SIZE + 1 + 1 + TIMESTAMP_SIZE + TIMEOUT_SIZE); ;; skip: public_key, subwallet_id, old_queried, queries, last_clean_time, timeout
+    slice owner_addr = data_slice~load_msg_addr();
+    slice next_owner_addr = data_slice~load_msg_addr();
+
+    return (owner_addr, next_owner_addr);
+}
+
 int processed?(int query_id, int need_clean) method_id {
     int shift = query_id >> BIT_NUMBER_SIZE;
     int bit_number = query_id & CELL_BITS_SIZE;
@@ -211,6 +302,8 @@ int processed?(int query_id, int need_clean) method_id {
     cell queries = data_slice~load_dict();
     int last_clean_time = data_slice~load_uint(TIMESTAMP_SIZE);
     int timeout = data_slice~load_uint(TIMEOUT_SIZE);
+    slice owner_addr = data_slice~load_msg_addr();
+    slice next_owner_addr = data_slice~load_msg_addr();
     data_slice.end_parse();
 
     if (need_clean) {

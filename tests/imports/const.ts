@@ -3,7 +3,11 @@ export const SUBWALLET_ID = 239;
 export const DEFAULT_TIMEOUT = 128;
 
 export enum OP {
-    InternalTransfer = 0xae42e5a4
+    InternalTransfer = 0xae42e5a4,
+    AssignNewOwner =   0x16d65166,
+    AcceptOwnership =  0xb5039ab7,
+    UpdatePublicKey =  0xba2c49bd,
+
 }
 export abstract class Errors {
     static invalid_signature = 33;

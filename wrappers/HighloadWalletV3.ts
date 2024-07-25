@@ -16,16 +16,17 @@ import {
     toNano
 } from '@ton/core';
 // import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
-import {sign} from "ton-crypto";
-import {OP} from "../tests/imports/const";
-import {HighloadQueryId} from "./HighloadQueryId";
+import { sign } from "@ton/crypto";
+import { OP } from "../tests/imports/const";
+import { HighloadQueryId } from "./HighloadQueryId";
 
 // export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
 export type HighloadWalletV3Config = {
     publicKey: Buffer,
     subwalletId: number,
-    timeout: number
+    timeout: number,
+    owner: Address
 };
 
 
@@ -38,6 +39,8 @@ export function highloadWalletV3ConfigToCell(config: HighloadWalletV3Config): Ce
         .storeUint(config.subwalletId, 32)
         .storeUint(0, 1 + 1 + TIMESTAMP_SIZE)
         .storeUint(config.timeout, TIMEOUT_SIZE)
+        .storeAddress(config.owner)
+        .storeAddress(null)
         .endCell();
 }
 
@@ -52,7 +55,7 @@ export class HighloadWalletV3 implements Contract {
 
     static createFromConfig(config: HighloadWalletV3Config, code: Cell, workchain = 0) {
         const data = highloadWalletV3ConfigToCell(config);
-        const init = {code, data};
+        const init = { code, data };
         return new HighloadWalletV3(contractAddress(workchain, init), init);
     }
 
@@ -87,7 +90,7 @@ export class HighloadWalletV3 implements Contract {
             messageCell = messageBuilder.endCell();
         }
 
-        const queryId =  (opts.query_id instanceof HighloadQueryId) ? opts.query_id.getQueryId() : opts.query_id;
+        const queryId = (opts.query_id instanceof HighloadQueryId) ? opts.query_id.getQueryId() : opts.query_id;
 
         const messageInner = beginCell()
             .storeUint(opts.subwalletId, 32)
@@ -120,6 +123,44 @@ export class HighloadWalletV3 implements Contract {
         });
     }
 
+    async sendAssignNewOwner(provider: ContractProvider, via: Sender, queryId: bigint, nextOwner: Address, options?: { sendMode?: SendMode, value?: bigint }) {
+        await provider.internal(via, {
+            value: options?.value ?? toNano(1),
+            bounce: false,
+            sendMode: options?.sendMode ?? SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(OP.AssignNewOwner, 32)
+                .storeUint(queryId, 64)
+                .storeAddress(nextOwner)
+                .endCell()
+        });
+    }
+
+    async sendAcceptOwnership(provider: ContractProvider, via: Sender, queryId: bigint, options?: { sendMode?: SendMode, value?: bigint }) {
+        await provider.internal(via, {
+            value: options?.value ?? toNano(1),
+            bounce: false,
+            sendMode: options?.sendMode ?? SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(OP.AcceptOwnership, 32)
+                .storeUint(queryId, 64)
+                .endCell()
+        });
+    }
+
+    async sendUpdatePublicKey(provider: ContractProvider, via: Sender, queryId: bigint, pubKey: Buffer, options?: { sendMode?: SendMode, value?: bigint }) {
+        await provider.internal(via, {
+            value: options?.value ?? toNano(1),
+            bounce: false,
+            sendMode: options?.sendMode ?? SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(OP.UpdatePublicKey, 32)
+                .storeUint(queryId, 64)
+                .storeBuffer(pubKey, 32)
+                .endCell()
+        });
+    }
+
     static createInternalTransferBody(opts: {
         actions: OutAction[] | Cell,
         queryId: HighloadQueryId,
@@ -142,6 +183,7 @@ export class HighloadWalletV3 implements Contract {
 
 
     }
+
 
     createInternalTransfer(opts: {
         actions: OutAction[] | Cell
@@ -206,10 +248,15 @@ export class HighloadWalletV3 implements Contract {
     }
 
     async getProcessed(provider: ContractProvider, queryId: HighloadQueryId, needClean = true): Promise<boolean> {
-        const res = (await provider.get('processed?', [{'type': 'int', 'value': queryId.getQueryId()}, {
+        const res = (await provider.get('processed?', [{ 'type': 'int', 'value': queryId.getQueryId() }, {
             'type': 'int',
             'value': needClean ? -1n : 0n
         }])).stack;
         return res.readBoolean();
+    }
+
+    async getOwner(provider: ContractProvider) {
+        const res = (await provider.get('get_owner', [])).stack;
+        return [res.readAddress(), res.readAddressOpt()];
     }
 }

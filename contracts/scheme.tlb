@@ -1,5 +1,6 @@
 storage$_ public_key:bits256 subwallet_id:uint32 old_queries:(HashmapE 14 ^Cell)
           queries:(HashmapE 14 ^Cell) last_clean_time:uint64 timeout:uint22
+          owner:MsgAddressInt next_owner:MsgAddress
           = Storage;
 
 _ shift:uint13 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } = QueryId;
@@ -9,6 +10,11 @@ _ shift:uint13 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } = Qu
 // crc32('internal_transfer n:# query_id:uint64 actions:^OutList n = InternalMsgBody n') = ae42e5a4
 
 internal_transfer#ae42e5a4 {n:#} query_id:uint64 actions:^(OutList n) = InternalMsgBody n;
+
+assign_new_owner#16d65166 query_id:uint64 next_owner:MsgAddressInt = InternalMsgBody;
+accept_ownership#b5039ab7 query_id:uint64 = InternalMsgBody;
+
+update_public_key#ba2c49bd query_id:uint64 public_key:bits256 = InternalMsgBody;
 
 _ {n:#}  subwallet_id:uint32 message_to_send:^Cell send_mode:uint8 query_id:QueryId created_at:uint64 timeout:uint22 = MsgInner;
 
