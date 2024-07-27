@@ -15,6 +15,7 @@ assign_new_owner#16d65166 query_id:uint64 next_owner:MsgAddressInt = InternalMsg
 accept_ownership#b5039ab7 query_id:uint64 = InternalMsgBody;
 
 update_public_key#ba2c49bd query_id:uint64 public_key:bits256 = InternalMsgBody;
+update#023cd52c query_id:uint64 code:^Cell data:^Cell = InternalMsgBody;
 
 _ {n:#}  subwallet_id:uint32 message_to_send:^Cell send_mode:uint8 query_id:QueryId created_at:uint64 timeout:uint22 = MsgInner;
 
