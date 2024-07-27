@@ -1,6 +1,6 @@
 # highload-wallet-contract-v3-rotatable
 
-> Key diffrence between regular highload-wallet-contract-v3 is that this implementation has owner and the owner can rotate public key.
+> Key diffrence between regular highload-wallet-contract-v3 is that this implementation has owner and the owner can rotate public key and the contract code & data.
 
 ⚠️ `timeout` must be greater then 0. We recommend using a timeout from 1 hour to 24 hours.
 
