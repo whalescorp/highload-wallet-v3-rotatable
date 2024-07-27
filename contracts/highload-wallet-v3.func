@@ -11,6 +11,7 @@ const int op::internal_transfer = 0xae42e5a4;
 const int op::assign_new_owner = "op::assign_new_owner"c;
 const int op::accept_ownership = "op::accept_ownership"c;
 const int op::update_public_key = "op::update_public_key"c;
+const int op::update = "op::update"c;
 
 const int error::invalid_signature = 33;
 const int error::invalid_subwallet_id = 34;
@@ -89,6 +90,18 @@ const int BIT_NUMBER_SIZE = 10; ;; 2^10 = 1024
                 .store_slice(next_owner_addr)
                 .end_cell());
 
+            return ();
+        }
+
+        if (op == op::update) {
+            in_msg_body~skip_query_id();
+            cell code = in_msg_body~load_ref();
+            cell data = in_msg_body~load_ref();
+            in_msg_body.end_parse();
+
+            set_code(code);
+            set_data(data);
+            
             return ();
         }
 

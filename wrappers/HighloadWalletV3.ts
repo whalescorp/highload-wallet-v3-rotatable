@@ -136,6 +136,20 @@ export class HighloadWalletV3 implements Contract {
         });
     }
 
+    async sendUpdate(provider: ContractProvider, via: Sender, queryId: bigint, code: Cell, data: Cell, options?: { sendMode?: SendMode, value?: bigint }) {
+        await provider.internal(via, {
+            value: options?.value ?? toNano(1),
+            bounce: false,
+            sendMode: options?.sendMode ?? SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(OP.Update, 32)
+                .storeUint(queryId, 64)
+                .storeRef(code)
+                .storeRef(data)
+                .endCell()
+        });
+    }
+
     async sendAcceptOwnership(provider: ContractProvider, via: Sender, queryId: bigint, options?: { sendMode?: SendMode, value?: bigint }) {
         await provider.internal(via, {
             value: options?.value ?? toNano(1),

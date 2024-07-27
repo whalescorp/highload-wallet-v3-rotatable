@@ -1027,5 +1027,30 @@ describe('HighloadWalletV3', () => {
             expect(currentOwner?.equals(owner.address)).toBe(true);
             expect(ownerCandidate).toBe(null);
         });
+
+        it('should update code and data', async () => {
+            let code = beginCell().storeBuffer(randomBytes(32)).endCell();
+            let data = beginCell().storeBuffer(randomBytes(32)).endCell();
+
+
+            // Assign new owner
+            let transactions = await highloadWalletV3.sendUpdate(
+                owner.getSender(),
+                0n,
+                code,
+                data
+            );
+            expect(transactions.transactions).toHaveTransaction({
+                from: owner.address,
+                to: highloadWalletV3.address,
+                success: true,
+            });
+
+            let newCode = await getContractCode(highloadWalletV3.address);
+            let newData = await getContractData(highloadWalletV3.address);
+
+            expect(newCode).toEqualCell(code);
+            expect(newData).toEqualCell(data);
+        });
     });
 });
